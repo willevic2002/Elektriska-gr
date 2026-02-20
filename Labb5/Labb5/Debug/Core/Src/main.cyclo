@@ -1,0 +1,14 @@
+../Core/Src/main.c:96:19:MPU6050_WriteRegister	1
+../Core/Src/main.c:100:19:MPU6050_ReadRegister	1
+../Core/Src/main.c:106:19:MPU6050_ReadRegisters	1
+../Core/Src/main.c:111:19:MPU6050_Init	4
+../Core/Src/main.c:135:6:HAL_GPIO_EXTI_Callback	2
+../Core/Src/main.c:143:13:AllLeds_Off	1
+../Core/Src/main.c:151:13:Led_SetByIndex	9
+../Core/Src/main.c:167:13:Uart_PrintAngle	2
+../Core/Src/main.c:183:5:main	9
+../Core/Src/main.c:294:6:SystemClock_Config	4
+../Core/Src/main.c:344:13:MX_I2C1_Init	4
+../Core/Src/main.c:392:13:MX_USART2_UART_Init	2
+../Core/Src/main.c:427:13:MX_GPIO_Init	1
+../Core/Src/main.c:498:6:Error_Handler	1
