@@ -67,7 +67,37 @@ static void MX_TIM2_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void Stepper_Apply(int8_t s){
 
+	const int8_t seq[8][4] = {
+			{1,0,0,0},
+			{1,1,0,0},
+			{0,1,0,0},
+			{0,1,1,0},
+			{0,0,1,0},
+			{0,0,1,1},
+			{0,0,0,1},
+			{1,0,0,1}
+	};
+
+	HAL_GPIO_WritePin(GPIOC, Orange_Pin, seq[s][0]);
+	HAL_GPIO_WritePin(GPIOC, Yellow_Pin, seq[s][1]);
+	HAL_GPIO_WritePin(GPIOC, Pink_Pin,   seq[s][2]);
+	HAL_GPIO_WritePin(GPIOC, Blue_Pin,   seq[s][3]);
+
+}
+
+int8_t step_state = 0;
+
+void StepperMove (int8_t dir){
+	if (dir > 0){
+		step_state++;
+	} else if (dir < 0) {
+		step_state--;
+	}
+
+	Stepper_Apply(step_state);
+}
 
 /* USER CODE END 0 */
 

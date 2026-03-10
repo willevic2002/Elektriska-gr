@@ -1,0 +1,209 @@
+#include "lab_can.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "main.h"
+
+extern CAN_HandleTypeDef hcan1;
+
+static uint32_t t_status = 0;
+static uint32_t t_sensor = 0;
+
+
+static uint8_t g_seq_status = 0;
+static uint8_t g_seq_sensor = 0;
+
+static CAN_RxHeaderTypeDef rxHeader;
+static uint8_t rxData [8];
+
+static bool elapsed(uint32_t *t_last , uint32_t period_ms)
+{
+	uint32_t now = HAL_GetTick ();
+	if (( uint32_t)(now - *t_last) >= period_ms) {
+		*t_last = now;
+		return true;
+	}
+	return false;
+}
+
+void LAB_CAN_PrintBanner (void)
+{
+	printf("\r\n=== CAN Lab ===\r\n");
+	printf("Node ID: %d\r\n", (int)LAB_NODE_ID);
+	printf("Status period: %lu ms\r\n", (unsigned long) LAB_PERIOD_STATUS_MS
+	);
+	printf("Sensor period: %lu ms\r\n", (unsigned long) LAB_PERIOD_SENSOR_MS
+	);
+}
+
+static void print_can_error(void)
+{
+	uint32_t err = HAL_CAN_GetError (& hcan1);
+	printf("CAN error: 0x%08lx (state =%d)\r\n", err , (int)hcan1.State);
+}
+
+// ---------- TODO: students implement ----------
+static bool CAN_ConfigFilter_AcceptAll_FIFO0 (void)
+
+{
+	// TODO:
+	// Configure a CAN filter that accepts all IDs and routes to FIFO0.
+	// Use HAL_CAN_ConfigFilter (&hcan1 , &filter).
+	CAN_FilterTypeDef filter = {0};
+
+	filter.FilterBank = 0;
+	filter.FilterMode = CAN_FILTERMODE_IDMASK;
+	filter.FilterScale = CAN_FILTERSCALE_32BIT;
+
+	filter.FilterIdHigh = 0x0000;
+	filter.FilterIdLow  = 0x0000;
+	filter.FilterMaskIdHigh = 0x0000;
+	filter.FilterMaskIdLow  = 0x0000;
+
+	filter.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+	filter.FilterActivation = ENABLE;
+
+
+	filter.SlaveStartFilterBank = 14;
+
+	HAL_CAN_ConfigFilter(&hcan1, &filter);
+
+
+	return true;
+}
+
+static bool CAN_StartAndNotify (void)
+
+{
+	// TODO:
+	// 1) HAL_CAN_Start (& hcan1)
+	// 2) HAL_CAN_ActivateNotification (&hcan1 , CAN_IT_RX_FIFO0_MSG_PENDING )
+	// Make sure NVIC "CAN1 RX0 interrupt" is enabled in CubeMX.
+	HAL_CAN_Start (&hcan1);
+	HAL_CAN_ActivateNotification (&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
+	return true;
+}
+
+static bool CAN_SendStd(uint16_t std_id , uint8_t data[8], uint8_t dlc)
+{
+
+	// TODO:
+	// Create CAN_TxHeaderTypeDef for standard data frame (IDE=STD , RTR= DATA).
+	// Then call HAL_CAN_AddTxMessage ().
+	CAN_TxHeaderTypeDef txHeader = {0};
+	uint32_t mailbox ;
+	//uint8_t data[8];
+	txHeader.StdId = 0x100 + LAB_NODE_ID;
+	txHeader.IDE = CAN_ID_STD;
+	txHeader.RTR = CAN_RTR_DATA;
+	txHeader.DLC = 8;
+	data[0] = LAB_NODE_ID;
+	data[1] = sequence_counter++;
+	HAL_CAN_AddTxMessage(&hcan1, &txHeader, data, &mailbox);
+
+	(void)std_id; (void)data; (void)dlc;
+	return false;
+}
+
+//--------------------------------------------
+
+bool LAB_CAN_InitAndStart (void)
+{
+	if (! CAN_ConfigFilter_AcceptAll_FIFO0 ()) {
+		printf("Filter config failed (TODO)\r\n");
+		return false;
+	}
+
+	if (! CAN_StartAndNotify ()) {
+		printf("CAN start/notify failed (TODO)\r\n");
+		return false;
+	}
+
+	printf("CAN started .\r\n");
+	return true;
+}
+
+// ---- Periodic broadcasters ----
+
+static void send_status(void)
+{
+	// TODO:
+	// Build 8-byte status payload.
+	// Suggested format:
+	// data [0] = LAB_NODE_ID
+	// data [1] = sequence counter
+	// ID: LAB_ID_STATUS_BASE + LAB_NODE_ID
+	uint8_t msg[8] = {0};
+	msg[0] = (uint8_t)LAB_NODE_ID;
+	msg[1] = g_seq_status ++;
+
+	uint16_t id = (uint16_t)( LAB_ID_STATUS_BASE + (uint16_t)LAB_NODE_ID);
+	(void)CAN_SendStd(id, msg, 8);
+}
+
+static void send_sensor(void)
+{
+	// TODO:
+	// Replace the fake sensor with ADC or other sensor.
+	// Suggested payload:
+	// data [0] = LAB_NODE_ID
+	// data [1] = sequence counter
+	// data [2..3] = sensor value (uint16 little endian)
+	uint16_t fake_sensor = (uint16_t)(HAL_GetTick () & 0x03FFu);
+	uint8_t msg [8] = {0};
+	msg [0] = (uint8_t)LAB_NODE_ID;
+	msg [1] = g_seq_sensor ++;
+	msg [2] = (uint8_t)(fake_sensor & 0xFFu);
+	msg [3] = (uint8_t)(( fake_sensor >> 8) & 0xFFu);
+	uint16_t id = (uint16_t)( LAB_ID_SENSOR_BASE + (uint16_t)LAB_NODE_ID);
+	(void)CAN_SendStd(id , msg , 8);
+}
+
+void LAB_CAN_Periodic (void)
+{
+	if (elapsed (& t_status , LAB_PERIOD_STATUS_MS )) {
+		send_status ();
+	}
+	if (elapsed (& t_sensor , LAB_PERIOD_SENSOR_MS )) {
+		send_sensor ();
+	}
+}
+
+void LAB_CAN_OnRxFifo0Pending (void)
+{
+	// TODO:
+	// Read message from FIFO0 using:
+	// HAL_CAN_GetRxMessage (&hcan1 , CAN_RX_FIFO0 , &rxHeader , rxData)
+	// Then print ID , DLC and payload bytes to UART.
+
+	CAN_RxHeaderTypeDef rxHeader;
+	uint8_t rxData [8];
+	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &rxHeader, rxData ) ;
+	printf ( " RX id=0x%03lx data = " , rxHeader.StdId);
+	for ( int i =0; i < rxHeader . DLC ; i ++)
+		printf ( "%02X", rxData [i]);
+	printf ( "\r\n");
+	(void)rxHeader;
+	(void)rxData;
+}
+
+void LAB_CAN_OnError (void)
+{
+	// Optional TODO:
+	// call print_can_error () and explain typical errors (ACK , bus -off , etc.)
+	print_can_error ();
+}
+
+// Arbitration demo hooks (optional)
+void LAB_CAN_SendArbLow (void)
+{
+	uint8_t msg[8] = { (uint8_t)LAB_NODE_ID , 0xA1 };
+	(void)CAN_SendStd(LAB_ID_ARB_LOW , msg , 2);
+}
+
+void LAB_CAN_SendArbHigh (void)
+{
+	uint8_t msg[8] = { (uint8_t)LAB_NODE_ID , 0xA2 };
+	(void)CAN_SendStd(LAB_ID_ARB_HIGH , msg , 2);
+}
